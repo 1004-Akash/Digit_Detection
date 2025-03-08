@@ -1,0 +1,48 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import ipywidgets as widgets
+from IPython.display import display
+import io
+from PIL import Image
+
+# Load the trained MNIST model
+model = load_model("mnist_model.h5")
+model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])  # Fix warning
+
+# Function to predict digit from uploaded image
+def predict_digit(image):
+    image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)  # Convert to grayscale
+    image = cv2.resize(image, (28, 28))
+
+    # Invert only if the background is dark
+    if np.mean(image) > 128:
+        image = cv2.bitwise_not(image)
+
+    image = image / 255.0  # Normalize
+    image = image.reshape(1, 28, 28, 1)  # Reshape for CNN
+
+    # Make prediction
+    prediction = model.predict(image)
+    predicted_label = np.argmax(prediction)
+
+    # Display the result
+    plt.imshow(image.reshape(28, 28), cmap="gray")
+    plt.title(f"Predicted Digit: {predicted_label}")
+    plt.axis("off")
+    plt.show()
+    print(f"Predicted Digit: {predicted_label}")
+
+# File upload widget
+upload_button = widgets.FileUpload(accept="image/*", multiple=False)
+
+# Function to process uploaded file
+def on_upload(change):
+    for name, file_info in upload_button.value.items():
+        image = Image.open(io.BytesIO(file_info["content"]))  # Read image from memory
+        predict_digit(image)  # Process image
+
+upload_button.observe(on_upload, names="value")
+display(upload_button)  # Show upload button
