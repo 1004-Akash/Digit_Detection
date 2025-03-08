@@ -1,0 +1,93 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import ipywidgets as widgets
+from IPython.display import display
+import io
+from PIL import Image
+
+# Load the trained MNIST model
+model = load_model("mnist_model.h5")
+model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])  # Fix warning
+
+import cv2
+import numpy as np
+from PIL import Image
+
+def preprocess_image(image):
+    """
+    Preprocess the image to 28x28 pixels while maintaining aspect ratio,
+    centering the digit, and ensuring a white digit on a black background.
+    """
+    # Convert to grayscale
+    img = image.convert("L")
+    img = np.array(img)
+
+    # Invert colors if needed (MNIST format: white digit on black background)
+    if np.mean(img) > 128:
+        img = cv2.bitwise_not(img)
+
+    # Apply Gaussian blur to smooth edges
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+
+    # Apply Otsu’s thresholding for better binarization
+    _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Find contours to detect the digit
+    contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        # Get bounding box around digit
+        x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
+
+        # Crop the digit
+        img = img[y:y+h, x:x+w]
+
+        # Resize while keeping aspect ratio
+        scale = 20.0 / max(w, h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    
+        # Create a 28x28 black canvas
+        new_img = np.zeros((28, 28), dtype=np.uint8)
+        x_offset, y_offset = (28 - new_w) // 2, (28 - new_h) // 2
+        new_img[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = img
+    else:
+        # If no digit is detected, return an empty black image
+        new_img = np.zeros((28, 28), dtype=np.uint8)
+
+    # Normalize pixel values to [0, 1]
+    new_img = new_img / 255.0
+
+    return new_img
+
+
+# Function to predict digit from uploaded image
+def predict_digit(image):
+    image = preprocess_image(image)  # Preprocess image properly
+    image = image.reshape(1, 28, 28, 1)  # Reshape for CNN
+
+    # Make prediction
+    prediction = model.predict(image)
+    predicted_label = np.argmax(prediction)
+
+    # Display the result
+    plt.imshow(image.reshape(28, 28), cmap="gray")
+    plt.title(f"Predicted Digit: {predicted_label}")
+    plt.axis("off")
+    plt.show()
+    print(f"Predicted Digit: {predicted_label}")
+
+# File upload widget
+upload_button = widgets.FileUpload(accept="image/*", multiple=False)
+
+# Function to process uploaded file
+def on_upload(change):
+    for name, file_info in upload_button.value.items():
+        image = Image.open(io.BytesIO(file_info["content"]))  # Read image from memory
+        predict_digit(image)  # Process image
+
+upload_button.observe(on_upload, names="value")
+display(upload_button)  # Show upload button
